@@ -17,7 +17,6 @@ from .util import (
 )
 from ..attention import SpatialTransformer, SpatialTransformer3D, exists
 
-
 # dummy replace
 def convert_module_to_f16(x):
     pass
@@ -1000,6 +999,7 @@ class MultiViewUNetModel(nn.Module):
                         disabled_sa = False
 
                     if not exists(num_attention_blocks) or nr < num_attention_blocks[level]:
+                        print('Down Block')
                         layers.append(
                             AttentionBlock(
                                 ch,
@@ -1010,7 +1010,7 @@ class MultiViewUNetModel(nn.Module):
                             ) if not use_spatial_transformer else SpatialTransformer3D(
                                 ch, num_heads, dim_head, depth=transformer_depth, context_dim=context_dim,
                                 disable_self_attn=disabled_sa, use_linear=use_linear_in_transformer,
-                                use_checkpoint=use_checkpoint
+                                use_checkpoint=use_checkpoint, rewired_sa=False
                             )
                         )
                 self.input_blocks.append(TimestepEmbedSequential(*layers))
@@ -1049,6 +1049,7 @@ class MultiViewUNetModel(nn.Module):
         if legacy:
             #num_heads = 1
             dim_head = ch // num_heads if use_spatial_transformer else num_head_channels
+        print('Middle Block')
         self.middle_block = TimestepEmbedSequential(
             ResBlock(
                 ch,
@@ -1067,7 +1068,7 @@ class MultiViewUNetModel(nn.Module):
             ) if not use_spatial_transformer else SpatialTransformer3D(  # always uses a self-attn
                             ch, num_heads, dim_head, depth=transformer_depth, context_dim=context_dim,
                             disable_self_attn=disable_middle_self_attn, use_linear=use_linear_in_transformer,
-                            use_checkpoint=use_checkpoint
+                            use_checkpoint=use_checkpoint, rewired_sa=False
                         ),
             ResBlock(
                 ch,
@@ -1097,6 +1098,7 @@ class MultiViewUNetModel(nn.Module):
                 ]
                 ch = model_channels * mult
                 if ds in attention_resolutions:
+                    # print('attention_resolutions', ds)
                     if num_head_channels == -1:
                         dim_head = ch // num_heads
                     else:
@@ -1111,6 +1113,7 @@ class MultiViewUNetModel(nn.Module):
                         disabled_sa = False
 
                     if not exists(num_attention_blocks) or i < num_attention_blocks[level]:
+                        print('Up Block')
                         layers.append(
                             AttentionBlock(
                                 ch,
@@ -1121,7 +1124,7 @@ class MultiViewUNetModel(nn.Module):
                             ) if not use_spatial_transformer else SpatialTransformer3D(
                                 ch, num_heads, dim_head, depth=transformer_depth, context_dim=context_dim,
                                 disable_self_attn=disabled_sa, use_linear=use_linear_in_transformer,
-                                use_checkpoint=use_checkpoint
+                                use_checkpoint=use_checkpoint, rewired_sa=(level==2 and i==1)
                             )
                         )
                 if level and i == self.num_res_blocks[level]:
@@ -1182,6 +1185,7 @@ class MultiViewUNetModel(nn.Module):
         :param num_frames: a integer indicating number of frames for tensor reshaping.
         :return: an [(N x F) x C x ...] Tensor of outputs. F is the number of frames (views).
         """
+        # print(x.shape[0], num_frames)
         assert x.shape[0] % num_frames == 0, "[UNet] input batch size must be dividable by num_frames!"
         assert (y is not None) == (
             self.num_classes is not None

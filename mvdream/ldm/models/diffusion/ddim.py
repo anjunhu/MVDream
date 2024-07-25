@@ -71,6 +71,7 @@ class DDIMSampler(object):
                corrector_kwargs=None,
                verbose=True,
                x_T=None,
+               start_time_step=None,
                log_every_t=100,
                unconditional_guidance_scale=1.,
                unconditional_conditioning=None,
@@ -101,7 +102,7 @@ class DDIMSampler(object):
                                                     temperature=temperature,
                                                     score_corrector=score_corrector,
                                                     corrector_kwargs=corrector_kwargs,
-                                                    x_T=x_T,
+                                                    x_T=x_T, start_time_step=start_time_step, 
                                                     log_every_t=log_every_t,
                                                     unconditional_guidance_scale=unconditional_guidance_scale,
                                                     unconditional_conditioning=unconditional_conditioning,
@@ -111,7 +112,7 @@ class DDIMSampler(object):
 
     @torch.no_grad()
     def ddim_sampling(self, cond, shape,
-                      x_T=None, ddim_use_original_steps=False,
+                      x_T=None, start_time_step=None, ddim_use_original_steps=False,
                       callback=None, timesteps=None, quantize_denoised=False,
                       mask=None, x0=None, img_callback=None, log_every_t=100,
                       temperature=1., noise_dropout=0., score_corrector=None, corrector_kwargs=None,
@@ -133,11 +134,15 @@ class DDIMSampler(object):
         time_range = reversed(range(0,timesteps)) if ddim_use_original_steps else np.flip(timesteps)
         total_steps = timesteps if ddim_use_original_steps else timesteps.shape[0]
 
+        if start_time_step is not None and start_time_step < len(time_range):
+            time_range = time_range[:-start_time_step]
+        
         iterator = tqdm(time_range, desc='DDIM Sampler', total=total_steps)
 
         for i, step in enumerate(iterator):
             index = total_steps - i - 1
             ts = torch.full((b,), step, device=device, dtype=torch.long)
+            # print(index, ts)
 
             if mask is not None:
                 assert x0 is not None
@@ -159,6 +164,45 @@ class DDIMSampler(object):
                 intermediates['pred_x0'].append(pred_x0)
 
         return img, intermediates
+
+    @torch.no_grad()
+    def ddim_inversion(self, x, conditioning, S, eta, batch_size, unconditional_guidance_scale=1.0, unconditional_conditioning=None,
+                    use_original_steps=False, verbose=False, **kwargs):
+        """
+        Perform DDIM inversion to encode an image back to its latent representation.
+        Returns the entire trajectory from x_T to x_0.
+        """
+        if conditioning is not None:
+            if isinstance(conditioning, dict):
+                cbs = conditioning[list(conditioning.keys())[0]].shape[0]
+                if cbs != batch_size:
+                    print(f"Warning: Got {cbs} conditionings but batch-size is {batch_size}")
+            else:
+                if conditioning.shape[0] != batch_size:
+                    print(f"Warning: Got {conditioning.shape[0]} conditionings but batch-size is {batch_size}")
+
+        self.make_schedule(ddim_num_steps=S, ddim_eta=eta, verbose=verbose)
+
+        timesteps = np.arange(self.ddpm_num_timesteps) if use_original_steps else self.ddim_timesteps
+        time_range = timesteps
+        total_steps = timesteps.shape[0]
+
+        iterator = tqdm(time_range, desc='DDIM Inversion', total=total_steps)
+        x_inv = x
+        trajectory = [x_inv]  # Start with x_0
+
+        for i, step in enumerate(iterator):
+            index = i
+            ts = torch.full((x.shape[0],), step, device=x.device, dtype=torch.long)
+            x_inv, _ = self.p_sample_ddim(x_inv, conditioning, ts, index=index, use_original_steps=use_original_steps,
+                                        unconditional_guidance_scale=unconditional_guidance_scale,
+                                        unconditional_conditioning=unconditional_conditioning, **kwargs)
+            trajectory.append(x_inv)  # Append each step to the trajectory
+
+        # Reverse the trajectory so it goes from x_T to x_0
+        # trajectory = trajectory[::-1]
+
+        return trajectory # smaller index --> lower noise level
 
     @torch.no_grad()
     def p_sample_ddim(self, x, c, t, index, repeat_noise=False, use_original_steps=False, quantize_denoised=False,

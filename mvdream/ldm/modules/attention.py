@@ -160,11 +160,14 @@ class CrossAttention(nn.Module):
             nn.Dropout(dropout)
         )
 
-    def forward(self, x, context=None, mask=None):
+    def forward(self, x_0, x_1, context=None, mask=None):
+        """
+        Rewired Cross Attention!
+        """
         h = self.heads
 
-        q = self.to_q(x)
-        context = default(context, x)
+        q = self.to_q(x_1)
+        context = default(context, x_0)
         k = self.to_k(context)
         v = self.to_v(context)
 
@@ -341,15 +344,31 @@ class SpatialTransformer(nn.Module):
 
 
 class BasicTransformerBlock3D(BasicTransformerBlock):
+    """
+    Rewired TransformerBlock3D!
+    """
 
-    def forward(self, x, context=None, num_frames=1):
-        return checkpoint(self._forward, (x, context, num_frames), self.parameters(), self.checkpoint)
+    def forward(self, x_0, x_1, context=None, num_frames=1, rewired_sa=False):
+        return checkpoint(self._forward, (x_0, x_1, context, num_frames, rewired_sa), self.parameters(), self.checkpoint)
 
-    def _forward(self, x, context=None, num_frames=1):
-        x = rearrange(x, "(b f) l c -> b (f l) c", f=num_frames).contiguous()
-        x = self.attn1(self.norm1(x), context=context if self.disable_self_attn else None) + x
-        x = rearrange(x, "b (f l) c -> (b f) l c", f=num_frames).contiguous()
-        x = self.attn2(self.norm2(x), context=context) + x
+    def _forward(self, x_0, x_1, context=None, num_frames=1, rewired_sa=False):
+        
+        x_1 = rearrange(x_1, "(b v) l c -> b (v l) c", v=num_frames).contiguous()
+        x_0 = rearrange(x_0, "(b v) l c -> b (v l) c", v=num_frames).contiguous()
+
+        if rewired_sa: # Rewired Self Attention
+            x_1 = self.attn1(self.norm1(x_0), self.norm1(x_1), context=context if self.disable_self_attn else None) + x_1
+            x_0 = self.attn1(self.norm1(x_0), self.norm1(x_0), context=context if self.disable_self_attn else None) + x_0
+        else:
+            x_1 = self.attn1(self.norm1(x_1), self.norm1(x_1), context=context if self.disable_self_attn else None) + x_1
+            x_0 = self.attn1(self.norm1(x_0), self.norm1(x_0), context=context if self.disable_self_attn else None) + x_0
+        
+        x_1 = rearrange(x_1, "b (v l) c -> (b v) l c", v=num_frames).contiguous()
+        x_0 = rearrange(x_0, "b (v l) c -> (b v) l c", v=num_frames).contiguous()
+
+        # Normal Cross Attention
+        x = torch.cat([x_0, x_1], dim=1)
+        x = self.attn2(self.norm2(x), self.norm2(x), context=context) + x
         x = self.ff(self.norm3(x)) + x
         return x
 
@@ -359,13 +378,15 @@ class SpatialTransformer3D(nn.Module):
     def __init__(self, in_channels, n_heads, d_head,
                  depth=1, dropout=0., context_dim=None,
                  disable_self_attn=False, use_linear=False,
-                 use_checkpoint=True):
+                 use_checkpoint=True, rewired_sa=False):
         super().__init__()
+        print(rewired_sa)
         if exists(context_dim) and not isinstance(context_dim, list):
             context_dim = [context_dim]
         self.in_channels = in_channels
         inner_dim = n_heads * d_head
         self.norm = Normalize(in_channels)
+        self.rewired_sa = rewired_sa
         if not use_linear:
             self.proj_in = nn.Conv2d(in_channels,
                                      inner_dim,
@@ -394,19 +415,21 @@ class SpatialTransformer3D(nn.Module):
         # note: if no context is given, cross-attention defaults to self-attention
         if not isinstance(context, list):
             context = [context]
-        b, c, h, w = x.shape
+        b, c, h, w = x.shape # torch.Size([2xBxVxF, 320, 32, 32])
         x_in = x
         x = self.norm(x)
         if not self.use_linear:
             x = self.proj_in(x)
-        x = rearrange(x, 'b c h w -> b (h w) c').contiguous()
+        # x = rearrange(x, '(b f) c h w -> b (f h w) c', f=2).contiguous()
+        x = rearrange(x, '(b f) c h w -> b f (h w) c', f=2).contiguous()
         if self.use_linear:
             x = self.proj_in(x)
+        x_0 = x[:, 0]; x_1 = x[:, 1]
         for i, block in enumerate(self.transformer_blocks):
-            x = block(x, context=context[i], num_frames=num_frames)
+            x = block(x_0, x_1, context=context[i][torch.arange(0, x.shape[0]*2, step=2)], num_frames=num_frames//2, rewired_sa=self.rewired_sa)
         if self.use_linear:
             x = self.proj_out(x)
-        x = rearrange(x, 'b (h w) c -> b c h w', h=h, w=w).contiguous()
+        x = rearrange(x, 'b (f h w) c -> (b f) c h w', f=2, h=h, w=w).contiguous()
         if not self.use_linear:
             x = self.proj_out(x)
         return x + x_in
