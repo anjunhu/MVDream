@@ -46,11 +46,13 @@ def t2i(model, image_size, prompt, uc, sampler, step=20, scale=7.5, batch_size=8
                                             unconditional_conditioning=uc_,)
             # print(len(trajectory), trajectory[0].shape) 
             x_T = trajectory[-(start_time_step+1)]
+            x_T[1::2] = 0.1*torch.randn_like(x_T[1::2])
+            print(x_T[1::2].shape)
         else:
             x_T = None
             start_time_step = None
 
-        samples_ddim, _ = sampler.sample(S=step, conditioning=c_,
+        samples_ddim, intermediates = sampler.sample(S=step, conditioning=c_,
                                         batch_size=batch_size, shape=shape,
                                         verbose=False, 
                                         unconditional_guidance_scale=scale,
@@ -77,11 +79,12 @@ if __name__ == "__main__":
     parser.add_argument("--start_time_step", type=int, default=35, help="DDIM inversion start time step")
     parser.add_argument("--ddim_inversion", action="store_true")
     parser.add_argument("--num_frames", type=int, default=8, help="num of frames (views) to generate")
+    parser.add_argument("--num_rows", type=int, default=1, help="number of rows to generate")
     parser.add_argument("--use_camera", type=int, default=1)
     parser.add_argument("--camera_elev", type=int, default=15)
-    parser.add_argument("--camera_azim", type=int, default=45)
+    parser.add_argument("--camera_azim", type=int, default=135)
     parser.add_argument("--camera_azim_span", type=int, default=360)
-    parser.add_argument("--seed", type=int, default=23)
+    parser.add_argument("--seed", type=int, default=2024)
     parser.add_argument("--fp16", action="store_true")
     parser.add_argument("--device", type=str, default='cuda')
     args = parser.parse_args()
@@ -121,7 +124,7 @@ if __name__ == "__main__":
     t = args.text + args.suffix
     set_seed(args.seed)
     images = []
-    for j in range(1):
+    for j in range(args.num_rows):
         img = t2i(model, args.size, t, uc, sampler, step=args.step, scale=10, batch_size=batch_size, ddim_eta=0.0, 
                 dtype=dtype, device=device, camera=camera, num_frames=args.num_frames, ddim_inversion=args.ddim_inversion, start_time_step=args.start_time_step)
         img = np.concatenate(img, 1)
