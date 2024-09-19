@@ -54,6 +54,7 @@ class LatentDiffusionInterface(nn.Module):
         alphas = 1. - betas
         alphas_cumprod = np.cumprod(alphas, axis=0)
         alphas_cumprod_prev = np.append(1., alphas_cumprod[:-1])
+        alphas_cumprod_next = np.append(alphas_cumprod[1:], 0)
 
         timesteps, = betas.shape
         self.num_timesteps = int(timesteps)
@@ -66,6 +67,7 @@ class LatentDiffusionInterface(nn.Module):
         self.register_buffer('betas', to_torch(betas))
         self.register_buffer('alphas_cumprod', to_torch(alphas_cumprod))
         self.register_buffer('alphas_cumprod_prev', to_torch(alphas_cumprod_prev))
+        self.register_buffer('alphas_cumprod_next', to_torch(alphas_cumprod_next))
 
         # calculations for diffusion q(x_t | x_{t-1}) and others
         self.register_buffer('sqrt_alphas_cumprod', to_torch(np.sqrt(alphas_cumprod)))

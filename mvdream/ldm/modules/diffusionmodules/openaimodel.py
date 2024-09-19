@@ -1010,7 +1010,7 @@ class MultiViewUNetModel(nn.Module):
                             ) if not use_spatial_transformer else SpatialTransformer3D(
                                 ch, num_heads, dim_head, depth=transformer_depth, context_dim=context_dim,
                                 disable_self_attn=disabled_sa, use_linear=use_linear_in_transformer,
-                                use_checkpoint=use_checkpoint, rewired_sa=False
+                                use_checkpoint=use_checkpoint, rewired_sa=True,
                             )
                         )
                 self.input_blocks.append(TimestepEmbedSequential(*layers))
@@ -1068,7 +1068,7 @@ class MultiViewUNetModel(nn.Module):
             ) if not use_spatial_transformer else SpatialTransformer3D(  # always uses a self-attn
                             ch, num_heads, dim_head, depth=transformer_depth, context_dim=context_dim,
                             disable_self_attn=disable_middle_self_attn, use_linear=use_linear_in_transformer,
-                            use_checkpoint=use_checkpoint, rewired_sa=False
+                            use_checkpoint=use_checkpoint, rewired_sa=True,
                         ),
             ResBlock(
                 ch,
@@ -1124,7 +1124,7 @@ class MultiViewUNetModel(nn.Module):
                             ) if not use_spatial_transformer else SpatialTransformer3D(
                                 ch, num_heads, dim_head, depth=transformer_depth, context_dim=context_dim,
                                 disable_self_attn=disabled_sa, use_linear=use_linear_in_transformer,
-                                use_checkpoint=use_checkpoint, rewired_sa=(level==2 and i==1)
+                                use_checkpoint=use_checkpoint, rewired_sa=True,
                             )
                         )
                 if level and i == self.num_res_blocks[level]:

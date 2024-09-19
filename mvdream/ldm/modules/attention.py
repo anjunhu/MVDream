@@ -343,7 +343,7 @@ class SpatialTransformer(nn.Module):
             x = self.proj_out(x)
         return x + x_in
 
-DEBUG = False
+DEBUG = [False, False]
 
 class BasicTransformerBlock3D(BasicTransformerBlock):
     """
@@ -379,7 +379,7 @@ class BasicTransformerBlock3D(BasicTransformerBlock):
         x_1 = rearrange(x_1, '(p b) l c -> (b p) l c', p=2).contiguous()
         x_0 = rearrange(x_0, '(p b) l c -> (b p) l c', p=2).contiguous()
 
-        if not DEBUG:
+        if not DEBUG[0]:
             frame_1_views = x_1.clone().chunk(4) # x_v0_f1, x_v1_f1, x_v2_f1, x_v3_f1
             frame_0_views = x_0.clone().chunk(4) # x_v0_f0, x_v1_f0, x_v2_f0, x_v3_f0
             # each x_v*_f* should be [2, l, c] if classifier guidance is on
@@ -387,6 +387,7 @@ class BasicTransformerBlock3D(BasicTransformerBlock):
 
             # Perform SA for f1
             for view in range(4):
+                # _x_1 = x_1.clone() #frame_1_views[view].clone().repeat(4, 1, 1)
                 _x_1 = rearrange(x_1, '(b p) ... -> (p b) ...', p=2)
                 if view == 0:
                     _x_0 = torch.cat([frame_0_views[0], frame_1_views[1], frame_1_views[2], frame_1_views[3]], dim=0)
@@ -407,8 +408,9 @@ class BasicTransformerBlock3D(BasicTransformerBlock):
                     _x_1 = self.attn1(self.norm1(_x_1), self.norm1(_x_1), context=context if self.disable_self_attn else None) + _x_1
                 _x_1 = rearrange(_x_1, "b (v l) c -> b v l c", v=num_frames).contiguous()
                 frame1_result_collector.append(_x_1[:, view]) # [(p=2 b=1) l c]
+                # print(frame1_result_collector[-1].shape)
 
-            x_1 = torch.stack(frame1_result_collector, dim=1) # 4 x [(p=2 b=1) l c] --> [(p b) v=4 l c]
+            x_1 = torch.stack(frame1_result_collector, dim=1) # 4 x [(p b) l c] --> [(p b) v=4 l c]
             x_1 = rearrange(x_1, "b v l c -> (b v) l c", v=num_frames).contiguous()
         else:
             x_1 = rearrange(x_1, '(b p) l c ->  (p b) l c', p=2)
@@ -482,7 +484,10 @@ class SpatialTransformer3D(nn.Module):
             x = self.proj_in(x)
         x_0 = x[:, 0]; x_1 = x[:, 1]
         for i, block in enumerate(self.transformer_blocks):
-            x = block(x_0, x_1, context=context[i][torch.arange(0, x.shape[0]*2, step=2)], num_frames=num_frames//2, rewired_sa=self.rewired_sa)
+            # what's going on in context: [16, 77, 1024] nullx8, 
+            c = torch.cat((context[i][:4], context[i][-4:]))
+            x = block(x_0, x_1, context=c, num_frames=num_frames//2, rewired_sa=self.rewired_sa)
+            # x = block(x_0, x_1, context=context[i][torch.arange(0, x.shape[0]*2, step=2)], num_frames=num_frames//2, rewired_sa=self.rewired_sa)
         if self.use_linear:
             x = self.proj_out(x)
         x = rearrange(x, 'b (f h w) c -> (b f) c h w', f=2, h=h, w=w).contiguous()
