@@ -53,8 +53,9 @@ if __name__ == "__main__":
     parser.add_argument("--text", type=str, default="an astronaut riding a horse")
     parser.add_argument("--suffix", type=str, default=", 3d asset")
     parser.add_argument("--size", type=int, default=256)
-    parser.add_argument("--num_frames", type=int, default=4, help="num of frames (views) to generate")
+    parser.add_argument("--num_frames", type=int, default=8, help="num of frames (views) to generate")
     parser.add_argument("--use_camera", type=int, default=1)
+    parser.add_argument("--n_samples", type=int, default=4)
     parser.add_argument("--camera_elev", type=int, default=15)
     parser.add_argument("--camera_azim", type=int, default=90)
     parser.add_argument("--camera_azim_span", type=int, default=360)
@@ -94,7 +95,7 @@ if __name__ == "__main__":
     t = args.text + args.suffix
     set_seed(args.seed)
     images = []
-    for j in range(3):
+    for j in range(args.n_samples):
         img = t2i(model, args.size, t, uc, sampler, step=50, scale=10, batch_size=batch_size, ddim_eta=0.0, 
                 dtype=dtype, device=device, camera=camera, num_frames=args.num_frames)
         img = np.concatenate(img, 1)

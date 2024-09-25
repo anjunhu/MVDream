@@ -54,5 +54,5 @@ def build_model(model_name, ckpt_path=None, cache_dir=None):
             cache_dir=cache_dir
         )
         print(f"Loading model from cache file: {ckpt_path}")
-    model.load_state_dict(torch.load(ckpt_path, map_location="cpu"))
+    model.load_state_dict(torch.load(ckpt_path, map_location="cpu"), strict=False)
     return model
