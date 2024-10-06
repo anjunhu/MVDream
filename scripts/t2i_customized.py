@@ -1,5 +1,6 @@
 import os
 import sys
+import glob
 import random
 import argparse
 from PIL import Image
@@ -13,6 +14,10 @@ from mvdream.ldm.util import instantiate_from_config
 from mvdream.ldm.models.diffusion.ddim import DDIMSampler
 from mvdream.model_zoo import build_model
 from torchvision.transforms.functional import to_tensor
+<<<<<<< HEAD
+=======
+from pngs2gif import pngs_to_gif
+>>>>>>> ddim reference renderings
 
 FORMAT_INTERLEAVED = True
 
@@ -22,90 +27,72 @@ def set_seed(seed):
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
 
-def t2i(model, image_size, prompt, uc, sampler, step=20, scale=7.5, batch_size=8, ddim_eta=0., dtype=torch.float32, device="cuda", camera=None, num_frames=1,
-        ddim_inversion=False, start_time_step=35):
+def visualize(z, file_name):
+    x_sample = model.decode_first_stage(z)
+    x_sample = torch.clamp((x_sample + 1.0) / 2.0, min=0.0, max=1.0)
+    x_sample = 255. * x_sample.permute(0,2,3,1).cpu().numpy()
+    x_sample = np.concatenate(list(x_sample.astype(np.uint8)), 1)
+    Image.fromarray(x_sample).save(file_name)
+
+def t2i(model, image_size, prompt, uc, sampler, step=20, scale=7.5, batch_size=8, ddim_eta=0.,
+        dtype=torch.float32, device="cuda", camera=None, num_frames=1, start_time_step=35):
+    
     if type(prompt)!=list:
         prompt = [prompt]
+
     with torch.no_grad(), torch.autocast(device_type=device, dtype=dtype):
-        prompt = "spider legs straight, legs extended, empty background"
+        ### prepare conditions
+        # prompt = "a goose flying, wings expanded, 3d asset"
+        # prompt = "a black and white cow standing, 3d asset"
+        # prompt = "a black and white cow running, legs bent, font legs bent, back legs bent, 3d asset"
+        # prompt = "piggy running, front legs folded at the knees, 3d asset"
+        prompt = "a brown sheep running, legs bent at the knees, font legs bent, back legs bent, 3d asset"
         c0 = model.get_learned_conditioning(prompt).to(device)
         c1 = model.get_learned_conditioning(prompt).to(device)
         c_ = {"context": torch.cat([c0, c1]).repeat(batch_size//2,1,1)}
-        ##### for vf, context in enumerate(c_['context']):  print(vf, context.shape, context[4:16])
-        # uc = model.get_learned_conditioning("resting, wings tucked in, wings folded tightly against its sides").to(device)
-        uc = model.get_learned_conditioning("resting, legs curled").to(device)
+        uc = model.get_learned_conditioning("standing, legs straight").to(device)
         uc_ = {"context": uc.repeat(batch_size,1,1)}
         if camera is not None:
             c_["camera"] = uc_["camera"] = camera
             c_["num_frames"] = uc_["num_frames"] = num_frames
         shape = [4, image_size // 8, image_size // 8] # [4, 32, 32]
 
-        if ddim_inversion:
-            intermediates_x_inter = torch.load('x_inter.torch')
-            x_T = intermediates_x_inter[-(start_time_step+1)].to(device)
-            # x = []
-            # for i in range(4):
-            #     # Load the image
-            #     x.append(to_tensor(Image.open(os.path.join('assets/generated45/', f'image_{i}.png'))))
-            # x = torch.stack(x).to(device) * 2.0 - 1.0
-            # x = F.interpolate(x, (256, 256))
-            # print(x.shape)
-            # x_T = model.encode_first_stage(x).mean #.sample() # DiagonalGaussianDistribution
+        ### load saved trajectory
+        animal_name = "piggy_albedo_1"
+        animal_name = "sheep_highpoly"
+        asset = f"assets/ddim_inv_trajectories_of_renderings/x_inter_rendered_{animal_name}.torch"
+        sampler.make_schedule(ddim_num_steps=step, ddim_eta=0)
 
-            # if FORMAT_INTERLEAVED:
-            #     x_T = x_T.repeat_interleave(2, dim=0)    # AABBCCDD
-            # else:
-            #     repeater = num_frames // 4
-            #     x_T = x_T.repeat(repeater, 1, 1, 1)      # ABCDABCD
-            # samples, intermediates = sampler.sample_inversion(S=step, conditioning=c_,
-            #                             batch_size=batch_size, shape=shape,
-            #                             verbose=False, 
-            #                             unconditional_guidance_scale=scale,
-            #                             unconditional_conditioning=uc_,
-            #                             eta=ddim_eta, x_T=x_T,)
-            # print(len(intermediates['x_inter']), intermediates['x_inter'][0].shape) 
-            # x_T = intermediates['x_inter'][-(start_time_step+1)]
-            # x_T[1::2] = torch.randn_like(x_T[1::2])
-            # print(x_T[1::2].shape)
-            for t, x_t in enumerate(intermediates['pred_x0']):
-                x_sample = model.decode_first_stage(x_t)
-                x_sample = torch.clamp((x_sample + 1.0) / 2.0, min=0.0, max=1.0)
-                x_sample = 255. * x_sample.permute(0,2,3,1).cpu().numpy()
-                x_sample = np.concatenate(list(x_sample.astype(np.uint8)), 1)
-                Image.fromarray(x_sample).save(f"ddim_inv_artefacts/pred_x0_t={t}.png")
-            for t, x_t in enumerate(intermediates['x_inter']):
-                x_sample = model.decode_first_stage(x_t)
-                x_sample = torch.clamp((x_sample + 1.0) / 2.0, min=0.0, max=1.0)
-                x_sample = 255. * x_sample.permute(0,2,3,1).cpu().numpy()
-                x_sample = np.concatenate(list(x_sample.astype(np.uint8)), 1)
-                Image.fromarray(x_sample).save(f"ddim_inv_artefacts/x_inter_t={t}.png")
-        else:
-            x_T = None
-            intermediates_x_inter = torch.load("assets/saved_ddim_trajectories/x_inter_a_parrot_resting_empty_background.torch")
-            x_T = intermediates_x_inter[20].to(device)
-            # x_T  = x_T + 0.2*torch.randn_like(x_T)
-            start_time_step = None
+        cached_trajectory = torch.load(asset)   
+        if "rendered" in asset:
+            cached_trajectory = cached_trajectory[::-1] 
+        # now cached_trajectory is from noisiest to cleanest
+            
+        x_T = cached_trajectory[25].to(device)
+        # x_T = sampler.stochastic_encode(cached_trajectory[0], torch.tensor([20]).to(device))
+        visualize(x_T, f"outputs/{animal_name}/t2i-starting-point.png")
 
+        ### denoise with supervision from referenec frame through rewired self-attention
         samples_ddim, intermediates = sampler.sample(S=step, conditioning=c_,
                                         batch_size=batch_size, shape=shape,
                                         verbose=False, 
                                         unconditional_guidance_scale=scale,
                                         unconditional_conditioning=uc_,
                                         eta=ddim_eta, x_T=x_T,
-                                        start_time_step=start_time_step,
-                                        cached_trajectory="assets/saved_ddim_trajectories/x_inter_a_spider_standing_legs_straight_empty_background.torch")
-        # for t, x_t in enumerate(intermediates['pred_x0']):
-        #     x_sample = model.decode_first_stage(x_t)
-        #     x_sample = torch.clamp((x_sample + 1.0) / 2.0, min=0.0, max=1.0)
-        #     x_sample = 255. * x_sample.permute(0,2,3,1).cpu().numpy()
-        #     x_sample = np.concatenate(list(x_sample.astype(np.uint8)), 1)
-        #     Image.fromarray(x_sample).save(f"forward_cache_artefacts/pred_x0_t={t}.png")
-        # for t, x_t in enumerate(intermediates['x_inter']):
-        #     x_sample = model.decode_first_stage(x_t)
-        #     x_sample = torch.clamp((x_sample + 1.0) / 2.0, min=0.0, max=1.0)
-        #     x_sample = 255. * x_sample.permute(0,2,3,1).cpu().numpy()
-        #     x_sample = np.concatenate(list(x_sample.astype(np.uint8)), 1)
-        #     Image.fromarray(x_sample).save(f"forward_cache_artefacts/x_inter_t={t}.png")
+                                        start_time_step=0,
+                                        cached_trajectory=asset)
+        
+        ### examine new trajectory
+        files = glob.glob(f"forward_cache_artefacts/{animal_name}/articulation/*.png")
+        for f in files:
+            os.remove(f)
+        for t, x_t in enumerate(intermediates["pred_x0"]):
+            visualize(x_t, f"forward_cache_artefacts/{animal_name}/articulation/pred_x0_t={t}.png")
+        for t, x_t in enumerate(intermediates["x_inter"]):
+            visualize(x_t, f"forward_cache_artefacts/{animal_name}/articulation/x_inter_t={t}.png")
+        pngs_to_gif(f"forward_cache_artefacts/{animal_name}/articulation/", f"outputs/{animal_name}/forward_articulation_x_inter_{animal_name}.gif", startswith="x_inter")
+        pngs_to_gif(f"forward_cache_artefacts/{animal_name}/articulation/", f"outputs/{animal_name}/forward_articulation_pred_x0_{animal_name}.gif", startswith="pred_x0")
+        
         x_sample = model.decode_first_stage(samples_ddim)
         x_sample = torch.clamp((x_sample + 1.0) / 2.0, min=0.0, max=1.0)
         x_sample = 255. * x_sample.permute(0,2,3,1).cpu().numpy()
@@ -123,8 +110,7 @@ if __name__ == "__main__":
     parser.add_argument("--suffix", type=str, default=", 3d asset")
     parser.add_argument("--size", type=int, default=256)
     parser.add_argument("--step", type=int, default=50)
-    parser.add_argument("--start_time_step", type=int, default=35, help="DDIM inversion start time step")
-    parser.add_argument("--ddim_inversion", action="store_true")
+    parser.add_argument("--start_time_step", type=int, default=35, help="the noisiest time step")
     parser.add_argument("--num_frames", type=int, default=8, help="num of frames (views) to generate")
     parser.add_argument("--num_rows", type=int, default=1, help="number of rows to generate")
     parser.add_argument("--use_camera", type=int, default=1)
@@ -133,7 +119,7 @@ if __name__ == "__main__":
     parser.add_argument("--camera_azim_span", type=int, default=360)
     parser.add_argument("--seed", type=int, default=2024)
     parser.add_argument("--fp16", action="store_true")
-    parser.add_argument("--device", type=str, default='cuda')
+    parser.add_argument("--device", type=str, default="cuda")
     args = parser.parse_args()
 
     dtype = torch.float16 if args.fp16 else torch.float32
@@ -147,7 +133,7 @@ if __name__ == "__main__":
         assert args.ckpt_path is not None, "ckpt_path must be specified!"
         config = OmegaConf.load(args.config_path)
         model = instantiate_from_config(config.model)
-        model.load_state_dict(torch.load(args.ckpt_path, map_location='cpu'))
+        model.load_state_dict(torch.load(args.ckpt_path, map_location="cpu"))
     model.device = device
     model.to(device)
     model.eval()
@@ -173,7 +159,11 @@ if __name__ == "__main__":
     images = []
     for j in range(args.num_rows):
         img = t2i(model, args.size, t, uc, sampler, step=args.step, scale=10, batch_size=batch_size, ddim_eta=0.0, 
+<<<<<<< HEAD
                 dtype=dtype, device=device, camera=camera, num_frames=args.num_frames, ddim_inversion=args.ddim_inversion, start_time_step=args.start_time_step)
+=======
+                dtype=dtype, device=device, camera=camera, num_frames=args.num_frames, start_time_step=args.start_time_step)
+>>>>>>> ddim reference renderings
         for i, im in enumerate(img):
             Image.fromarray(im).save(f"sample_{i}.png")
         img = np.concatenate(img, 1)
