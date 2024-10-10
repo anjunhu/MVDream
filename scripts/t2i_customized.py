@@ -14,10 +14,7 @@ from mvdream.ldm.util import instantiate_from_config
 from mvdream.ldm.models.diffusion.ddim import DDIMSampler
 from mvdream.model_zoo import build_model
 from torchvision.transforms.functional import to_tensor
-<<<<<<< HEAD
-=======
 from pngs2gif import pngs_to_gif
->>>>>>> ddim reference renderings
 
 FORMAT_INTERLEAVED = True
 
@@ -34,8 +31,8 @@ def visualize(z, file_name):
     x_sample = np.concatenate(list(x_sample.astype(np.uint8)), 1)
     Image.fromarray(x_sample).save(file_name)
 
-def t2i(model, image_size, prompt, uc, sampler, step=20, scale=7.5, batch_size=8, ddim_eta=0.,
-        dtype=torch.float32, device="cuda", camera=None, num_frames=1, start_time_step=35):
+def t2i(model, image_size, prompt, uc, sampler, animal_name, step=20, scale=7.5, batch_size=8, ddim_eta=0., 
+        dtype=torch.float32, device="cuda", camera=None, num_frames=1, start_time_step=35,):
     
     if type(prompt)!=list:
         prompt = [prompt]
@@ -46,7 +43,8 @@ def t2i(model, image_size, prompt, uc, sampler, step=20, scale=7.5, batch_size=8
         # prompt = "a black and white cow standing, 3d asset"
         # prompt = "a black and white cow running, legs bent, font legs bent, back legs bent, 3d asset"
         # prompt = "piggy running, front legs folded at the knees, 3d asset"
-        prompt = "a brown sheep running, legs bent at the knees, font legs bent, back legs bent, 3d asset"
+        # prompt = "a brown sheep running, legs bent at the knees, front legs bent, back legs bent, 3d asset"
+        prompt = "a gray horse, dark mane on back of its neck, dark tail, running, galloping, front legs bent, back legs bent at the knees, 3d asset"
         c0 = model.get_learned_conditioning(prompt).to(device)
         c1 = model.get_learned_conditioning(prompt).to(device)
         c_ = {"context": torch.cat([c0, c1]).repeat(batch_size//2,1,1)}
@@ -58,9 +56,7 @@ def t2i(model, image_size, prompt, uc, sampler, step=20, scale=7.5, batch_size=8
         shape = [4, image_size // 8, image_size // 8] # [4, 32, 32]
 
         ### load saved trajectory
-        animal_name = "piggy_albedo_1"
-        animal_name = "sheep_highpoly"
-        asset = f"assets/ddim_inv_trajectories_of_renderings/x_inter_rendered_{animal_name}.torch"
+        asset = f"assets/ddim_inv_trajectories_of_renderings/x_inter_rendered_{animal_name}_seed{args.seed}_seed{args.seed}.torch"
         sampler.make_schedule(ddim_num_steps=step, ddim_eta=0)
 
         cached_trajectory = torch.load(asset)   
@@ -70,7 +66,7 @@ def t2i(model, image_size, prompt, uc, sampler, step=20, scale=7.5, batch_size=8
             
         x_T = cached_trajectory[25].to(device)
         # x_T = sampler.stochastic_encode(cached_trajectory[0], torch.tensor([20]).to(device))
-        visualize(x_T, f"outputs/{animal_name}/t2i-starting-point.png")
+        visualize(x_T, f"outputs/{animal_name}_seed{args.seed}/t2i-starting-point.png")
 
         ### denoise with supervision from referenec frame through rewired self-attention
         samples_ddim, intermediates = sampler.sample(S=step, conditioning=c_,
@@ -83,15 +79,15 @@ def t2i(model, image_size, prompt, uc, sampler, step=20, scale=7.5, batch_size=8
                                         cached_trajectory=asset)
         
         ### examine new trajectory
-        files = glob.glob(f"forward_cache_artefacts/{animal_name}/articulation/*.png")
+        files = glob.glob(f"forward_cache_artefacts/{animal_name}_seed{args.seed}/articulation/*.png")
         for f in files:
             os.remove(f)
         for t, x_t in enumerate(intermediates["pred_x0"]):
-            visualize(x_t, f"forward_cache_artefacts/{animal_name}/articulation/pred_x0_t={t}.png")
+            visualize(x_t, f"forward_cache_artefacts/{animal_name}_seed{args.seed}/articulation/pred_x0_t={t}.png")
         for t, x_t in enumerate(intermediates["x_inter"]):
-            visualize(x_t, f"forward_cache_artefacts/{animal_name}/articulation/x_inter_t={t}.png")
-        pngs_to_gif(f"forward_cache_artefacts/{animal_name}/articulation/", f"outputs/{animal_name}/forward_articulation_x_inter_{animal_name}.gif", startswith="x_inter")
-        pngs_to_gif(f"forward_cache_artefacts/{animal_name}/articulation/", f"outputs/{animal_name}/forward_articulation_pred_x0_{animal_name}.gif", startswith="pred_x0")
+            visualize(x_t, f"forward_cache_artefacts/{animal_name}_seed{args.seed}/articulation/x_inter_t={t}.png")
+        pngs_to_gif(f"forward_cache_artefacts/{animal_name}_seed{args.seed}/articulation/", f"outputs/{animal_name}_seed{args.seed}/forward_articulation_x_inter_{animal_name}_seed{args.seed}.gif", startswith="x_inter")
+        pngs_to_gif(f"forward_cache_artefacts/{animal_name}_seed{args.seed}/articulation/", f"outputs/{animal_name}_seed{args.seed}/forward_articulation_pred_x0_{animal_name}_seed{args.seed}.gif", startswith="pred_x0")
         
         x_sample = model.decode_first_stage(samples_ddim)
         x_sample = torch.clamp((x_sample + 1.0) / 2.0, min=0.0, max=1.0)
@@ -115,11 +111,13 @@ if __name__ == "__main__":
     parser.add_argument("--num_rows", type=int, default=1, help="number of rows to generate")
     parser.add_argument("--use_camera", type=int, default=1)
     parser.add_argument("--camera_elev", type=int, default=15)
-    parser.add_argument("--camera_azim", type=int, default=90)
+    parser.add_argument("--camera_azim", type=int, default=135)
     parser.add_argument("--camera_azim_span", type=int, default=360)
-    parser.add_argument("--seed", type=int, default=2024)
+    parser.add_argument("--seed", type=int, default=2025)
     parser.add_argument("--fp16", action="store_true")
     parser.add_argument("--device", type=str, default="cuda")
+    parser.add_argument("--animal_name", type=str, default="horse_stallion_highpoly_color_2", 
+                        choices=["horse_stallion_highpoly_color_2",  "piggy_albedo_1", "sheep_highpoly"])
     args = parser.parse_args()
 
     dtype = torch.float16 if args.fp16 else torch.float32
@@ -158,15 +156,11 @@ if __name__ == "__main__":
     set_seed(args.seed)
     images = []
     for j in range(args.num_rows):
-        img = t2i(model, args.size, t, uc, sampler, step=args.step, scale=10, batch_size=batch_size, ddim_eta=0.0, 
-<<<<<<< HEAD
-                dtype=dtype, device=device, camera=camera, num_frames=args.num_frames, ddim_inversion=args.ddim_inversion, start_time_step=args.start_time_step)
-=======
+        img = t2i(model, args.size, t, uc, sampler, args.animal_name, step=args.step, scale=10, batch_size=batch_size, ddim_eta=0.0, 
                 dtype=dtype, device=device, camera=camera, num_frames=args.num_frames, start_time_step=args.start_time_step)
->>>>>>> ddim reference renderings
         for i, im in enumerate(img):
-            Image.fromarray(im).save(f"sample_{i}.png")
+            Image.fromarray(im).save(f"outputs/{args.animal_name}/sample_{i}.png")
         img = np.concatenate(img, 1)
         images.append(img)
     images = np.concatenate(images, 0)
-    Image.fromarray(images).save(f"sample.png")
+    Image.fromarray(images).save(f"outputs/{args.animal_name}/sample.png")

@@ -23,7 +23,7 @@ def set_seed(seed):
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
 
-def zo_perturb_parameters(params, zs, seed=2024, scaling_factor=1, eps=1e-2):
+def zo_perturb_parameters(params, zs, seed=2025, scaling_factor=1, eps=1e-2):
     """
     Perturb the parameters with random vector z IN PLACE.
     Input: 
@@ -38,7 +38,7 @@ def zo_perturb_parameters(params, zs, seed=2024, scaling_factor=1, eps=1e-2):
         param['context'].data = param['context'].data + scaling_factor * z * eps
     return params
 
-def zo_step(forward_func, loss_func, inputs, zs, seed=2024, lr=1e-2, wd=1e-3):
+def zo_step(forward_func, loss_func, inputs, zs, seed=2025, lr=1e-2, wd=1e-3):
     """
     Estimate gradient by MeZO. Return the loss from f(theta + z)
     """
@@ -56,7 +56,7 @@ def zo_step(forward_func, loss_func, inputs, zs, seed=2024, lr=1e-2, wd=1e-3):
     zo_perturb_parameters(inputs, zs, seed=seed, scaling_factor=1)
     return output, projected_grad
 
-def zo_update(params, zs, projected_grad, seed=2024, lr=1e-2, wd=1e-3):
+def zo_update(params, zs, projected_grad, seed=2025, lr=1e-2, wd=1e-3):
     """
     Update the parameters with the estimated gradients.
     """
@@ -73,8 +73,9 @@ def zo_update(params, zs, projected_grad, seed=2024, lr=1e-2, wd=1e-3):
     return params
 
 
-def t2i(model, image_size, prompt, uc, sampler, step=20, scale=7.5, batch_size=8, ddim_eta=0., dtype=torch.float32, device="cuda", camera=None, num_frames=1,
-        ddim_inversion=False, start_time_step=35):
+def t2i(model, image_size, prompt, uc, sampler, animal_name, 
+        step=20, scale=7.5, batch_size=8, ddim_eta=0., dtype=torch.float32, 
+        device="cuda", camera=None, num_frames=1, start_time_step=35):
     if type(prompt)!=list:
         prompt = [prompt]
     with torch.no_grad(), torch.autocast(device_type=device, dtype=dtype):
@@ -206,16 +207,17 @@ if __name__ == "__main__":
     parser.add_argument("--size", type=int, default=256)
     parser.add_argument("--step", type=int, default=50)
     parser.add_argument("--start_time_step", type=int, default=35, help="DDIM inversion start time step")
-    parser.add_argument("--ddim_inversion", action="store_true")
     parser.add_argument("--num_frames", type=int, default=8, help="num of frames (views) to generate")
     parser.add_argument("--num_rows", type=int, default=1, help="number of rows to generate")
     parser.add_argument("--use_camera", type=int, default=1)
     parser.add_argument("--camera_elev", type=int, default=15)
     parser.add_argument("--camera_azim", type=int, default=135)
     parser.add_argument("--camera_azim_span", type=int, default=360)
-    parser.add_argument("--seed", type=int, default=2024)
+    parser.add_argument("--seed", type=int, default=2025)
     parser.add_argument("--fp16", action="store_true")
     parser.add_argument("--device", type=str, default="cuda")
+    parser.add_argument("--animal_name", type=str, default="horse_stallion_highpoly_color_2", 
+                        choices=["horse_stallion_highpoly_color_2",  "piggy_albedo_1", "sheep_highpoly"])
     args = parser.parse_args()
 
     dtype = torch.float16 if args.fp16 else torch.float32
@@ -254,8 +256,8 @@ if __name__ == "__main__":
     set_seed(args.seed)
     images = []
     for j in range(args.num_rows):
-        img = t2i(model, args.size, t, uc, sampler, step=args.step, scale=10, batch_size=batch_size, ddim_eta=0.0, 
-                dtype=dtype, device=device, camera=camera, num_frames=args.num_frames, ddim_inversion=args.ddim_inversion, start_time_step=args.start_time_step)
+        img = t2i(model, args.size, t, uc, sampler, args.animal_name, step=args.step, scale=10, batch_size=batch_size, ddim_eta=0.0, 
+                dtype=dtype, device=device, camera=camera, num_frames=args.num_frames, start_time_step=args.start_time_step)
         for i, im in enumerate(img):
             Image.fromarray(im).save(f"sample_{i}.png")
         img = np.concatenate(img, 1)

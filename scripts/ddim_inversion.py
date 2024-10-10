@@ -23,14 +23,16 @@ def set_seed(seed):
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
 
-def t2i(model, image_size, prompt, uc, sampler, step=20, scale=7.5, batch_size=8, ddim_eta=0., dtype=torch.float32, device="cuda", camera=None, num_frames=1,
-        ddim_inversion=False, start_time_step=35):
+def t2i(model, image_size, prompt, uc, sampler, animal_name, 
+        step=20, scale=7.5, batch_size=8, ddim_eta=0., dtype=torch.float32, 
+        device="cuda", camera=None, num_frames=1, start_time_step=35):
     if type(prompt)!=list:
         prompt = [prompt]
     with torch.no_grad(), torch.autocast(device_type=device, dtype=dtype):
         prompt = "a pig standing straight, legs straight, animal, 3d asset"
         prompt = "a brown sheep, myanmar, nyilonelycompany, standing straight, legs straight, white face, fluffy, 3d asset"
-        # prompt = "a cow standing, 3D asset"
+        prompt = "a cow standing, 3D asset"
+        prompt = "a gray horse, dark mane on back of its neck, dark tail, standing straight, 3d asset"
         c0 = model.get_learned_conditioning(prompt).to(device)
         c1 = model.get_learned_conditioning(prompt).to(device)
         c_ = {"context": torch.cat([c0, c1]).repeat(batch_size//2,1,1)}
@@ -43,11 +45,10 @@ def t2i(model, image_size, prompt, uc, sampler, step=20, scale=7.5, batch_size=8
             c_["num_frames"] = uc_["num_frames"] = num_frames
         shape = [4, image_size // 8, image_size // 8] # [4, 32, 32]
 
-        animal_name = "horse_stallion_highpoly_color_2"
-        os.makedirs(f"outputs/{animal_name}/", exist_ok=True)
-        os.makedirs(f"assets/ddim_inv_trajectories_of_renderings/{animal_name}/", exist_ok=True)
-        os.makedirs(f"forward_cache_artefacts/{animal_name}/reconstruction/", exist_ok=True)
-        os.makedirs(f"forward_cache_artefacts/{animal_name}/articulation/", exist_ok=True)
+        os.makedirs(f"outputs/{animal_name}_seed{args.seed}/", exist_ok=True)
+        os.makedirs(f"assets/ddim_inv_trajectories_of_renderings/{animal_name}_seed{args.seed}/", exist_ok=True)
+        os.makedirs(f"forward_cache_artefacts/{animal_name}_seed{args.seed}/reconstruction/", exist_ok=True)
+        os.makedirs(f"forward_cache_artefacts/{animal_name}_seed{args.seed}/articulation/", exist_ok=True)
         
         x = []
         for i in range(4):
@@ -80,9 +81,9 @@ def t2i(model, image_size, prompt, uc, sampler, step=20, scale=7.5, batch_size=8
             x_sample = torch.clamp((x_sample + 1.0) / 2.0, min=0.0, max=1.0)
             x_sample = 255. * x_sample.permute(0,2,3,1).cpu().numpy()
             x_sample = np.concatenate(list(x_sample.astype(np.uint8)), 1)
-            Image.fromarray(x_sample).save(f"assets/ddim_inv_trajectories_of_renderings/{animal_name}/x_inter_t={t}.png")
-        pngs_to_gif(f"assets/ddim_inv_trajectories_of_renderings/{animal_name}/", f"outputs/{animal_name}/ddim_inv_trajectory_of_renderings_{animal_name}.gif")
-        asset = f"assets/ddim_inv_trajectories_of_renderings/x_inter_rendered_{animal_name}.torch"
+            Image.fromarray(x_sample).save(f"assets/ddim_inv_trajectories_of_renderings/{animal_name}_seed{args.seed}/x_inter_t={t}.png")
+        pngs_to_gif(f"assets/ddim_inv_trajectories_of_renderings/{animal_name}_seed{args.seed}/", f"outputs/{animal_name}_seed{args.seed}/ddim_inv_trajectory_of_renderings_{animal_name}_seed{args.seed}.gif")
+        asset = f"assets/ddim_inv_trajectories_of_renderings/x_inter_rendered_{animal_name}_seed{args.seed}.torch"
         torch.save(intermediates["x_inter"], asset)
 
         x_T = intermediates["x_inter"][25].to(device)
@@ -100,15 +101,15 @@ def t2i(model, image_size, prompt, uc, sampler, step=20, scale=7.5, batch_size=8
             x_sample = torch.clamp((x_sample + 1.0) / 2.0, min=0.0, max=1.0)
             x_sample = 255. * x_sample.permute(0,2,3,1).cpu().numpy()
             x_sample = np.concatenate(list(x_sample.astype(np.uint8)), 1)
-            Image.fromarray(x_sample).save(f"forward_cache_artefacts/{animal_name}/reconstruction/pred_x0_t={t}.png")
+            Image.fromarray(x_sample).save(f"forward_cache_artefacts/{animal_name}_seed{args.seed}/reconstruction/pred_x0_t={t}.png")
         for t, x_t in enumerate(intermediates["x_inter"]):
             x_sample = model.decode_first_stage(x_t)
             x_sample = torch.clamp((x_sample + 1.0) / 2.0, min=0.0, max=1.0)
             x_sample = 255. * x_sample.permute(0,2,3,1).cpu().numpy()
             x_sample = np.concatenate(list(x_sample.astype(np.uint8)), 1)
-            Image.fromarray(x_sample).save(f"forward_cache_artefacts/{animal_name}/reconstruction/x_inter_t={t}.png")
-        pngs_to_gif(f"forward_cache_artefacts/{animal_name}/reconstruction/", f"outputs/{animal_name}/forward_reconstruction_x_inter_{animal_name}.gif", startswith="x_inter")
-        pngs_to_gif(f"forward_cache_artefacts/{animal_name}/reconstruction/", f"outputs/{animal_name}/forward_reconstruction_pred_x0_{animal_name}.gif", startswith="pred_x0")
+            Image.fromarray(x_sample).save(f"forward_cache_artefacts/{animal_name}_seed{args.seed}/reconstruction/x_inter_t={t}.png")
+        pngs_to_gif(f"forward_cache_artefacts/{animal_name}_seed{args.seed}/reconstruction/", f"outputs/{animal_name}_seed{args.seed}/forward_reconstruction_x_inter_{animal_name}_seed{args.seed}.gif", startswith="x_inter")
+        pngs_to_gif(f"forward_cache_artefacts/{animal_name}_seed{args.seed}/reconstruction/", f"outputs/{animal_name}_seed{args.seed}/forward_reconstruction_pred_x0_{animal_name}_seed{args.seed}.gif", startswith="pred_x0")
         x_sample = model.decode_first_stage(samples_ddim)
         x_sample = torch.clamp((x_sample + 1.0) / 2.0, min=0.0, max=1.0)
         x_sample = 255. * x_sample.permute(0,2,3,1).cpu().numpy()
@@ -127,24 +128,17 @@ if __name__ == "__main__":
     parser.add_argument("--size", type=int, default=256)
     parser.add_argument("--step", type=int, default=50)
     parser.add_argument("--start_time_step", type=int, default=35, help="DDIM inversion start time step")
-    parser.add_argument("--ddim_inversion", action="store_true")
     parser.add_argument("--num_frames", type=int, default=8, help="num of frames (views) to generate")
     parser.add_argument("--num_rows", type=int, default=1, help="number of rows to generate")
     parser.add_argument("--use_camera", type=int, default=1)
     parser.add_argument("--camera_elev", type=int, default=15)
-<<<<<<< HEAD
-    parser.add_argument("--camera_azim", type=int, default=90)
-    parser.add_argument("--camera_azim_span", type=int, default=360)
-    parser.add_argument("--seed", type=int, default=2024)
-    parser.add_argument("--fp16", action="store_true")
-    parser.add_argument("--device", type=str, default='cuda')
-=======
     parser.add_argument("--camera_azim", type=int, default=135)
     parser.add_argument("--camera_azim_span", type=int, default=360)
-    parser.add_argument("--seed", type=int, default=2024)
+    parser.add_argument("--seed", type=int, default=2025)
     parser.add_argument("--fp16", action="store_true")
     parser.add_argument("--device", type=str, default="cuda")
->>>>>>> ddim reference renderings
+    parser.add_argument("--animal_name", type=str, default="horse_stallion_highpoly_color_2", 
+                        choices=["horse_stallion_highpoly_color_2",  "piggy_albedo_1", "sheep_highpoly"])
     args = parser.parse_args()
 
     dtype = torch.float16 if args.fp16 else torch.float32
@@ -158,11 +152,7 @@ if __name__ == "__main__":
         assert args.ckpt_path is not None, "ckpt_path must be specified!"
         config = OmegaConf.load(args.config_path)
         model = instantiate_from_config(config.model)
-<<<<<<< HEAD
-        model.load_state_dict(torch.load(args.ckpt_path, map_location='cpu'))
-=======
         model.load_state_dict(torch.load(args.ckpt_path, map_location="cpu"))
->>>>>>> ddim reference renderings
     model.device = device
     model.to(device)
     model.eval()
@@ -187,8 +177,8 @@ if __name__ == "__main__":
     set_seed(args.seed)
     images = []
     for j in range(args.num_rows):
-        img = t2i(model, args.size, t, uc, sampler, step=args.step, scale=10, batch_size=batch_size, ddim_eta=0.0, 
-                dtype=dtype, device=device, camera=camera, num_frames=args.num_frames, ddim_inversion=args.ddim_inversion, start_time_step=args.start_time_step)
+        img = t2i(model, args.size, t, uc, sampler, args.animal_name, step=args.step, scale=10, batch_size=batch_size, ddim_eta=0.0, 
+                dtype=dtype, device=device, camera=camera, num_frames=args.num_frames, start_time_step=args.start_time_step)
         for i, im in enumerate(img):
             Image.fromarray(im).save(f"sample_{i}.png")
         img = np.concatenate(img, 1)

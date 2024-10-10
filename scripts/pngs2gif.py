@@ -4,7 +4,7 @@ from PIL import Image
 def pngs_to_gif(input_directory, output_gif_name, duration=200, startswith='x_inter'):
     # Get all PNG images from the directory
     png_files = [f for f in os.listdir(input_directory) if (f.endswith('.png') and f.startswith(startswith) and '15' not in f)]
-    print(png_files)
+    # print(png_files)
     # png_files.sort()  # Sort images to keep the order
 
     # Load images
@@ -23,11 +23,13 @@ def pngs_to_gif(input_directory, output_gif_name, duration=200, startswith='x_in
     else:
         print("No PNG files found in the directory.")
 
-# input_directory = 'ddim_inv_artefacts'  # Replace with your directory
-# output_gif_name = 'rendered_standing_cow_add_noise.gif'  # Replace with desired output GIF name
-# pngs_to_gif(input_directory, output_gif_name)
 
-input_directory = '/scratch/local/ssd/anjun/consistency/MVDream/forward_50_run/'  # Replace with your directory
-for startswith in ['x_inter', 'pred_x0']:
-    output_gif_name = f'forward_50_run_{startswith}.gif'  # Replace with desired output GIF name
-    pngs_to_gif(input_directory, output_gif_name, startswith=startswith)
+if __name__ == '__main__':
+    input_directory = 'ddim_inv_artefacts'  # Replace with your directory
+    output_gif_name = 'rendered_standing_cow_add_noise.gif'  # Replace with desired output GIF name
+    pngs_to_gif(input_directory, output_gif_name)
+
+    input_directory = '/scratch/local/ssd/anjun/consistency/MVDream/forward_50_run/'  # Replace with your directory
+    for startswith in ['x_inter', 'pred_x0']:
+        output_gif_name = f'forward_50_run_{startswith}.gif'  # Replace with desired output GIF name
+        pngs_to_gif(input_directory, output_gif_name, startswith=startswith)
